@@ -8,6 +8,7 @@ from app.mbti_test.application.port.input.answer_question_use_case import (
 )
 from app.mbti_test.application.port.output.mbti_test_session_repository import MBTITestSessionRepositoryPort
 from app.mbti_test.application.port.ai_question_provider_port import AIQuestionProviderPort
+from app.mbti_test.domain.analyzer import run_analysis, calculate_partial_mbti
 from app.mbti_test.infrastructure.service.human_question_provider import HumanQuestionProvider
 from app.mbti_test.domain.mbti_message import MBTIMessage, MessageRole, MessageSource
 from app.mbti_test.domain.mbti_test_session import TestStatus
@@ -63,8 +64,29 @@ class AnswerQuestionService(AnswerQuestionUseCase):
         session.current_question_index += 1
 
         current_index = session.current_question_index
+        analysis_result = None
+        partial_analysis_result = None
 
-        # 4. 완료 체크
+        # 4. 사람 질문(12개) 완료 시 분석 실행
+        if current_index == HUMAN_QUESTION_COUNT:
+            answers = [ans["content"] for ans in session.answers]
+            mbti, scores, confidence = run_analysis(answers)
+
+            analysis_result = {
+                "mbti": mbti,
+                "scores": scores,
+                "confidence": confidence,
+            }
+            session.human_test_result = analysis_result
+        
+        # 5. 매 질문마다 부분 MBTI 분석
+        if current_index <= HUMAN_QUESTION_COUNT: # Only for human-led questions
+            current_answers = [ans["content"] for ans in session.answers]
+            partial_analysis_result = calculate_partial_mbti(current_answers)
+            print(f"Partial MBTI Analysis for question {current_index}: {partial_analysis_result}")
+
+
+        # 6. 전체 완료 체크
         if current_index >= TOTAL_QUESTION_COUNT:
             session.status = TestStatus.COMPLETED
             self._session_repository.save(session)
@@ -73,9 +95,11 @@ class AnswerQuestionService(AnswerQuestionUseCase):
                 total_questions=TOTAL_QUESTION_COUNT,
                 next_question=None,
                 is_completed=True,
+                analysis_result=analysis_result,
+                partial_analysis_result=partial_analysis_result,
             )
 
-        # 5. 다음 질문 가져오기
+        # 7. 다음 질문 가져오기
         if current_index < HUMAN_QUESTION_COUNT:
             # Human phase (questions 0-11) - 세션에 저장된 랜덤 선택 질문 사용
             next_question = self._human_question_provider.get_question_from_list(
@@ -109,7 +133,7 @@ class AnswerQuestionService(AnswerQuestionUseCase):
                     source=MessageSource.AI,
                 )
 
-        # 6. 질문 히스토리에 저장
+        # 8. 질문 히스토리에 저장
         if next_question:
             session.questions.append(next_question.content)
 
@@ -120,6 +144,8 @@ class AnswerQuestionService(AnswerQuestionUseCase):
             total_questions=TOTAL_QUESTION_COUNT,
             next_question=next_question,
             is_completed=False,
+            analysis_result=analysis_result,
+            partial_analysis_result=partial_analysis_result,
         )
 
     def _build_chat_history(self, session) -> List[ChatMessage]:

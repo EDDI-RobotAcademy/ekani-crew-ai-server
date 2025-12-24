@@ -83,6 +83,8 @@ async def answer_question(
         "total_questions": result.total_questions,
         "next_question": result.next_question,
         "is_completed": result.is_completed,
+        "analysis_result": result.analysis_result,
+        "partial_analysis_result": result.partial_analysis_result,
     })
 
 @mbti_router.get("/result/{session_id}", response_model=MBTIResultResponse)
