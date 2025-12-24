@@ -25,7 +25,7 @@ class StartMBTITestService(StartMBTITestUseCase):
         self._mbti_test_session_repository.save(session)
 
         # Get the first question
-        first_question = self._question_provider.get_initial_question()
+        first_question = self._question_provider.get_initial_question
 
         return StartMBTITestResponse(
             session=session,

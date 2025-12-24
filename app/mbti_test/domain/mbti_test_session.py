@@ -1,12 +1,25 @@
+
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal
+from enum import Enum
+from typing import List, Dict
 
-from pydantic import BaseModel, Field
+class TestType(Enum):
+    HUMAN = "human"
+    AI = "ai"
 
+class TestStatus(Enum):
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
 
-class MBTITestSession(BaseModel):
-    id: uuid.UUID = Field(default_factory=uuid.uuid4)
+@dataclass
+class MBTITestSession:
+    id: uuid.UUID
     user_id: uuid.UUID
-    status: Literal["IN_PROGRESS", "COMPLETED"] = "IN_PROGRESS"
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    test_type: TestType
+    status: TestStatus
+    created_at: datetime
+    questions: List[str] = field(default_factory=list)
+    answers: List[Dict] = field(default_factory=list)
+    current_question_index: int = 0
