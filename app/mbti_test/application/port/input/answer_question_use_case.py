@@ -14,6 +14,8 @@ class AnswerQuestionResponse(BaseModel):
     total_questions: int
     next_question: MBTIMessage | None
     is_completed: bool
+    analysis_result: dict | None = None
+    partial_analysis_result: dict | None = None
 
     class Config:
         arbitrary_types_allowed = True
