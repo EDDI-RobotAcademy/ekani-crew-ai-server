@@ -148,6 +148,53 @@ DESCRIPTIONS = {
 }
 
 
+def get_dimension_for_question(question_index: int) -> str:
+    """질문 인덱스에 따른 MBTI 차원 반환"""
+    if question_index < 3:
+        return "EI"
+    elif question_index < 6:
+        return "SN"
+    elif question_index < 9:
+        return "TF"
+    else:
+        return "JP"
+
+
+def analyze_single_answer(answer: str, dimension: str) -> dict:
+    """단일 답변을 분석하여 MBTI 점수 반환"""
+    scores = {k: 0 for k in "EISNTFJP"}
+
+    # 키워드 매칭
+    if dimension in DICTIONARY:
+        for trait, keywords in DICTIONARY[dimension].items():
+            for k in keywords:
+                if k["word"] in answer:
+                    scores[trait] += k["w"]
+
+    # 스타일 보정 적용
+    apply_style_correction(answer, dimension, scores)
+
+    # 해당 차원의 양쪽 점수 추출
+    if dimension == "EI":
+        side = "E" if scores["E"] >= scores["I"] else "I"
+        score = max(scores["E"], scores["I"])
+    elif dimension == "SN":
+        side = "S" if scores["S"] >= scores["N"] else "N"
+        score = max(scores["S"], scores["N"])
+    elif dimension == "TF":
+        side = "T" if scores["T"] >= scores["F"] else "F"
+        score = max(scores["T"], scores["F"])
+    else:  # JP
+        side = "J" if scores["J"] >= scores["P"] else "P"
+        score = max(scores["J"], scores["P"])
+
+    return {
+        "scores": scores,
+        "side": side,
+        "score": score,
+    }
+
+
 def apply_style_correction(ans: str, dim: str, scores: dict):
     ans_len = len(ans)
 
