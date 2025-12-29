@@ -1,7 +1,7 @@
 import re
 
 # ==========================================================
-# 1. 데이터 영역 (기존 DICTIONARY 유지 + 구어체 데이터 포함)
+# 1. 데이터 영역 (키워드 사전)
 # ==========================================================
 DICTIONARY = {
     "EI": {
@@ -40,7 +40,7 @@ DICTIONARY = {
             {"word": "없이", "w": 3}, {"word": "누워", "w": 4}, {"word": "뒹굴", "w": 4},
             {"word": "넷플", "w": 3}, {"word": "유튜브", "w": 3}, {"word": "잠", "w": 4},
             {"word": "자고", "w": 4}, {"word": "안나가", "w": 5}, {"word": "이불", "w": 4},
-            {"word": "평화", "w": 3}, {"word": "만끽", "w": 4},{"word": "음미", "w": 4},
+            {"word": "평화", "w": 3}, {"word": "만끽", "w": 4}, {"word": "음미", "w": 4},
             {"word": "혼자서", "w": 5}, {"word": "조용히", "w": 4}, {"word": "침착", "w": 3}
         ]
     },
@@ -248,23 +248,70 @@ def analyze_linguistic_detail(ans: str, dim: str, scores: dict):
         # [추가] 소극적/부정적 표현은 I일 확률 높음
         if re.search(r"없|안|못|아무", clean_ans): scores["I"] += 1
 
-    # --- [SN] 인식 방식 ---
+    # --- [SN] 인식 방식 (들여쓰기 수정 완료) ---
     if dim == "SN":
-        if re.search(r"\d+|개|번|시|분|원", clean_ans): scores["S"] += 2
-        if re.search(r"[가-힣]다(\.|!|$)", clean_ans): scores["S"] += 1  # 종결어미 강화
+        # 1. [S] 숫자와 단위 = 현실 감각
+        # 예: "3개", "10분", "만원"
+        if re.search(r"[0-9]+|일|월|년|개|번|시|분|원", clean_ans):
+            scores["S"] += 2
 
-        if re.search(r"\.\.\.|~|것 같|듯|음|\?", clean_ans): scores["N"] += 2
-        if re.search(r"뭔가|약간|좀|아니면|상상", clean_ans): scores["N"] += 1
+        # 2. [S] 과거 시제/완료형 = 직접 경험한 사실
+        # 예: "먹었어", "갔다왔어", "봤어" -> 경험 기반(S)
+        if re.search(r"았|었|했|봤|갔|왔", clean_ans):
+            scores["S"] += 1.5
 
-    # --- [TF] 판단 근거 ---
+        # 3. [N] 비유적 표현 (직유/은유)
+        # 예: "마치 구름 같아", "그림처럼 예뻐"
+        if re.search(r"마치|~처럼|~같이|~양|듯한", clean_ans):
+            scores["N"] += 3  # 비유는 N의 강력한 신호
+
+        # 4. [N] 불확실/추측/미래 시제
+        # 예: "일 것 같아", "아마도", "그러지 않을까?"
+        if re.search(r"것 같|을까|겠지|지도|아마|혹시", clean_ans):
+            scores["N"] += 2
+
+        # 5. [N] 모호한 수식어
+        # 예: "뭔가 느낌이", "약간 그런 거"
+        if re.search(r"뭔가|약간|묘한|이상한|그런", clean_ans):
+            scores["N"] += 1
+
+    # --- [TF] 판단 근거 (들여쓰기 수정 완료) ---
     if dim == "TF":
-        if "?" in clean_ans or "왜" in clean_ans: scores["T"] += 2
-        if re.search(r"근데|하지만|그래서|즉|때문", clean_ans): scores["T"] += 1
+        # 1. [T] 의문문과 인과관계 (따지는 말투)
+        # 예: "왜?", "그래서?", "근데 그게 맞아?"
+        if "?" in clean_ans:
+            scores["T"] += 1.5
+        if "왜" in clean_ans and "?" in clean_ans:  # "왜?" 콤보는 강력한 T
+            scores["T"] += 2
 
-        if re.search(r"[ㅠㅜㅎㅋ]{2,}|!|♥|♡", clean_ans): scores["F"] += 2
-        if re.search(r"네요|아요|어요|죠|구나", clean_ans): scores["F"] += 1
+        # 2. [T] 논리적 접속사
+        # 예: "근데", "하지만", "그러니까", "결국"
+        if re.search(r"근데|하지만|그래서|그러니까|결국|즉", clean_ans):
+            scores["T"] += 1.5
 
-    # --- [JP] 생활 양식 ---
+        # 3. [T] 단정적/건조한 어미
+        # 예: "~다.", "~함.", "~임.", "~지."
+        if re.search(r"(다|함|임|지|까)(\.|!|$)", clean_ans):
+            scores["T"] += 1
+
+        # 4. [F] 감탄사와 이모티콘 (풍부한 리액션)
+        # 예: "!", "ㅠㅠ", "ㅎㅎㅎ", "♥"
+        if re.search(r"!|♥|♡", clean_ans):
+            scores["F"] += 1.5
+        if re.search(r"[ㅠㅜㅎㅋ]{2,}", clean_ans):  # 2글자 이상 연속 (ㅠㅠ, ㅋㅋ)
+            scores["F"] += 2
+
+        # 5. [F] 공감/부드러운 어미
+        # 예: "~구나", "~네요", "~가요", "~잖아요"
+        if re.search(r"구나|네요|아요|어요|죠|잖아요", clean_ans):
+            scores["F"] += 1.5
+
+        # 6. [F] 길게 끄는 말투 (감정의 여운)
+        # 예: "아~~~", "진짜...", "그렇구나..."
+        if re.search(r"~|\.\.|[아어으]{2,}", clean_ans):  # 모음 길게(아아아)
+            scores["F"] += 1.5
+
+    # --- [JP] 생활 양식 (들여쓰기 수정 완료) ---
     if dim == "JP":
         if re.search(r"해야|할게|하자|필수|꼭|계획", clean_ans): scores["J"] += 2
         if re.search(r"글쎄|아마|몰라|일단|그냥|봐서", clean_ans): scores["P"] += 2
@@ -296,18 +343,21 @@ def calculate_partial_mbti(answers: list):
 
         # 2. 정규식 패턴 분석 (Regex Scanning)
         # [SN]
-        if re.search(r"만약에|~라면|상상|미래|혹시", ans):
+        if re.search(r"만약에|~라면|상상|미래|혹시|가정|세계관", ans):
             scores["N"] += 3;
             is_detected = True
-        if re.search(r"현실|당장|팩트|실제", ans):
+        # [S] 오감(시각,미각 등)을 나타내는 표현 + 현실 인식
+        if re.search(r"맛있|배고파|색깔|냄새|소리|보여|들려|아파|추워|더워|현실|당장|팩트|실제", ans):
             scores["S"] += 3;
             is_detected = True
 
         # [TF]
-        if re.search(r"왜|이유|논리|따져", ans):
+        # T: 원인 분석 및 해결책 제시
+        if re.search(r"왜|이유|원인|논리|따져|생각해|해결|방법", ans):
             scores["T"] += 4;
             is_detected = True
-        if re.search(r"속상|서운|어떡해|마음|기쁨|행복", ans):
+        # F: 감정 이입 및 리액션
+        if re.search(r"속상|서운|어떡해|마음|괜찮|좋겠|대박|헐|진짜|기쁨|행복", ans):
             scores["F"] += 4;
             is_detected = True
 
@@ -326,7 +376,7 @@ def calculate_partial_mbti(answers: list):
             # "뭔가 감지가 안 되는 묘한 답변 -> 추상적(N)일 확률 높음"
             scores["N"] += 1
 
-            # 4. 정밀 언어 분석 (보정은 보정대로 계속 수행)
+        # 4. 정밀 언어 분석 (보정은 보정대로 계속 수행)
         # (N+1을 받았더라도, 말투에서 I나 P가 감지될 수 있으므로 수행)
         analyze_linguistic_detail(ans, "EI", scores)
         analyze_linguistic_detail(ans, "SN", scores)
@@ -358,54 +408,11 @@ def calculate_partial_mbti(answers: list):
     return {"mbti": partial_mbti, "scores": scores}
 
 
+# [수정됨] 중복 정의 제거하고 하나로 합침
 def analyze_single_answer(answer: str, dimension: str) -> dict:
-    """단일 답변 분석에도 동일한 N+1 로직 적용"""
-    scores = {k: 0 for k in dimension}  # 예: {'S':0, 'N':0}
-    is_detected = False  # 감지 여부 플래그
-
-    # 1. 키워드 매칭
-    if dimension in DICTIONARY:
-        for trait, keywords in DICTIONARY[dimension].items():
-            for k in keywords:
-                if k["word"] in answer:
-                    scores[trait] += k["w"]
-                    is_detected = True
-
-    # 2. 패턴 매칭
-    if dimension == "SN":
-        if re.search(r"만약에|~라면|상상|미래", answer): scores["N"] += 3; is_detected = True
-        if re.search(r"현실|당장|팩트|실제", answer): scores["S"] += 3; is_detected = True
-    if dimension == "TF":
-        if re.search(r"왜|이유|논리|따져", answer): scores["T"] += 4; is_detected = True
-        if re.search(r"속상|서운|어떡해|마음", answer): scores["F"] += 4; is_detected = True
-    if dimension == "JP":
-        if re.search(r"계획|체크|리스트", answer): scores["J"] += 3; is_detected = True
-        if re.search(r"봐서|그때|일단", answer): scores["P"] += 3; is_detected = True
-
-    # =======================================================
-    # [NEW] 3. 미감지 시 N+1 (SN 차원 질문이 아니더라도 전체 점수판엔 없지만,
-    # 여기선 단일 차원 분석이므로 'N' 키워드가 있는 dimension일 때만 적용)
-    # =======================================================
-    if not is_detected and "N" in scores:
-        scores["N"] += 1
-
-    # 4. 정밀 분석 (보정)
-    analyze_linguistic_detail(answer, dimension, scores)
-
-    # 결과 산출
-    trait1, trait2 = tuple(dimension)
-    score1 = scores.get(trait1, 0)
-    score2 = scores.get(trait2, 0)
-
-    side = trait1 if score1 >= score2 else trait2
-    score = score1 if score1 >= score2 else score2
-
-    return {"scores": scores, "side": side, "score": score}
-
-
-def analyze_single_answer(answer: str, dimension: str) -> dict:
-    """단일 답변 분석: 키워드 + 패턴 + 정밀분석 점수를 모두 합산하여 반환"""
+    """단일 답변 분석: 키워드 + 패턴 + 정밀분석 + N+1 보정 점수를 모두 합산하여 반환"""
     scores = {k: 0 for k in dimension}  # 예: {'E':0, 'I':0}
+    is_detected = False  # 감지 플래그
 
     # 1. 키워드
     if dimension in DICTIONARY:
@@ -413,19 +420,25 @@ def analyze_single_answer(answer: str, dimension: str) -> dict:
             for k in keywords:
                 if k["word"] in answer:
                     scores[trait] += k["w"]
+                    is_detected = True
 
-    # 2. 정규식 패턴
+    # 2. 정규식 패턴 (N+1 보정을 위해 감지 여부 체크)
     if dimension == "SN":
-        if re.search(r"만약에|~라면|상상|미래", answer): scores["N"] += 3
-        if re.search(r"현실|당장|팩트|실제", answer): scores["S"] += 3
+        if re.search(r"만약에|~라면|상상|미래|혹시", answer): scores["N"] += 3; is_detected = True
+        if re.search(r"현실|당장|팩트|실제", answer): scores["S"] += 3; is_detected = True
     if dimension == "TF":
-        if re.search(r"왜|이유|논리|따져", answer): scores["T"] += 4
-        if re.search(r"속상|서운|어떡해|마음", answer): scores["F"] += 4
+        if re.search(r"왜|이유|논리|따져", answer): scores["T"] += 4; is_detected = True
+        if re.search(r"속상|서운|어떡해|마음", answer): scores["F"] += 4; is_detected = True
     if dimension == "JP":
-        if re.search(r"계획|체크|리스트|시간", answer): scores["J"] += 3
-        if re.search(r"봐서|그때|일단|그냥", answer): scores["P"] += 3
+        if re.search(r"계획|체크|리스트|시간", answer): scores["J"] += 3; is_detected = True
+        if re.search(r"봐서|그때|일단|그냥", answer): scores["P"] += 3; is_detected = True
 
-    # 3. [중요] 정밀 언어 분석 (무조건 실행하여 1~2점 누적)
+    # 3. [최후의 보루] 미감지 시 N+1 (SN 차원 질문이 아니더라도 N 점수 부여)
+    # 단일 차원 분석이므로 'N'이 있는 dimension(SN)일 때만 적용하는 것이 논리적임
+    if not is_detected and "N" in scores:
+        scores["N"] += 1
+
+    # 4. [중요] 정밀 언어 분석 (무조건 실행하여 1~2점 누적)
     analyze_linguistic_detail(answer, dimension, scores)
 
     # 점수 계산
