@@ -306,7 +306,7 @@ Person C,D ─→ 버그 픽스, UX 개선
 
 ##### 토론 게시판
 
-- [ ] `COMM-2` [Community] 사용자로서, 토론 게시글을 작성하고 싶다
+- [x] `COMM-2` [Community] 사용자로서, 토론 게시글을 작성하고 싶다
   - **Domain**: `Post` (id, author_id, topic_id?, title, content, post_type, created_at)
   - **Domain**: `PostType` = 'topic' | 'free'
   - **Repository**: `PostRepository` - 게시글 저장/조회
