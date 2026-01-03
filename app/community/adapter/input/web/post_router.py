@@ -57,6 +57,17 @@ class PostResponse(BaseModel):
     created_at: datetime
 
 
+class PostListItemResponse(BaseModel):
+    id: str
+    author_id: str
+    title: str
+    content: str
+    post_type: str
+    topic_id: str | None
+    created_at: datetime
+    comment_count: int
+
+
 @post_router.post("/posts", status_code=status.HTTP_201_CREATED)
 def create_post(
     request: CreatePostRequest,
@@ -87,7 +98,7 @@ def create_post(
 
 
 class PostListResponse(BaseModel):
-    items: list[PostResponse]
+    items: list[PostListItemResponse]
     total: int
     page: int
     size: int
@@ -99,6 +110,7 @@ def get_posts(
     page: int = 1,
     size: int = 10,
     post_repo: PostRepositoryPort = Depends(get_post_repository),
+    comment_repo: CommentRepositoryPort = Depends(get_comment_repository),
 ) -> PostListResponse:
     """게시글 목록 조회 (필터링, 페이지네이션)"""
     post_type = None
@@ -112,8 +124,11 @@ def get_posts(
     else:
         total = post_repo.count_all()
 
+    # N+1 방지: 한 번에 모든 댓글 수 조회
+    comment_counts = comment_repo.count_all_by_target_type("post")
+
     items = [
-        PostResponse(
+        PostListItemResponse(
             id=post.id,
             author_id=post.author_id,
             title=post.title,
@@ -121,6 +136,7 @@ def get_posts(
             post_type=post.post_type.value,
             topic_id=post.topic_id,
             created_at=post.created_at,
+            comment_count=comment_counts.get(post.id, 0),
         )
         for post in posts
     ]
