@@ -11,7 +11,8 @@ from app.mbti_test.application.port.output.surprise_answer_repository import Sur
 
 # 이 프로젝트에 이미 존재하는 모델들을 import 해서 사용
 # 아래 2개는 "있을 가능성이 매우 높은" 이름이라, 실제 파일의 클래스명에 맞춰 수정해줘.
-from app.mbti_test.infrastructure.mbti_test_models import MbtiTestSessionModel, UserModel
+from app.mbti_test.infrastructure.mbti_test_models import MBTITestSessionModel
+from app.user.infrastructure.model.user_model import UserModel
 
 
 LetterScores = Dict[str, int]
@@ -69,9 +70,9 @@ class AdjustMBTIUseCase:
 
     def _load_latest_session_scores(self, user_id: UUID) -> LetterScores:
         row = (
-            self._db.query(MbtiTestSessionModel)
-            .filter(MbtiTestSessionModel.user_id == str(user_id))
-            .order_by(MbtiTestSessionModel.created_at.desc())
+            self._db.query(MBTITestSessionModel)
+            .filter(MBTITestSessionModel.user_id == str(user_id))
+            .order_by(MBTITestSessionModel.created_at.desc())
             .first()
         )
 
