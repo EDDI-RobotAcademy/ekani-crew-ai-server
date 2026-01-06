@@ -114,6 +114,15 @@ def _build_analysis_system_prompt() -> str:
     """답변 분석용 시스템 프롬프트"""
     return (
         "너는 MBTI 전문 분석가다. 사용자의 답변을 분석하여 MBTI 성향 점수를 매긴다.\n"
+        "반드시 요청된 target_dimension 하나만 평가하고, 다른 축은 무시해라.\n"
+        "\n"
+        "## 규칙:\n"
+        "- target_dimension은 EI, SN, TF, JP 중 하나다.\n"
+        "- JSON만 반환한다. (마크다운/설명 금지)\n"
+        "- 반환되는 dimension 값은 target_dimension과 동일해야 한다.\n"
+        "- scores에는 해당 축의 두 키만 있어야 한다: EI=E/I, SN=S/N, TF=T/F, JP=J/P. 다른 키 금지.\n"
+        "- 각 점수는 0~10 정수이며, 두 점수 합은 제한하지 않는다(단, 한쪽이 높으면 다른 쪽은 낮아야 한다는 상식적 범위 내).\n"
+        "- reasoning은 한국어 1~2문장으로, 답변 내용만 근거로 작성한다.\n"
         "\n"
         "## 각 차원별 판단 기준 (매우 중요!):\n"
         "\n"
@@ -129,14 +138,20 @@ def _build_analysis_system_prompt() -> str:
         "- 주의: '개선시켜준다', '효율적으로', '원인이 뭐냐'는 명백한 T\n"
         "- 주의: 직설적/팩폭 스타일도 T, 돌려말하며 배려하면 F\n"
         "\n"
-        "## 규칙:\n"
-        "- 질문의 의도된 차원보다 답변 내용의 실제 성향을 우선시한다.\n"
-        "- 해당 차원의 양쪽에 각각 0~10점 사이의 점수를 부여한다.\n"
-        "- 명확한 성향이 보이면 차이를 크게 (예: 8:2), 애매하면 작게 (예: 5:4)\n"
-        "- 출력은 반드시 JSON 하나이며, 아래 스키마를 지킨다.\n"
-        '  {"dimension": "SN", "scores": {"S": 3, "N": 7}, "reasoning": "분석 근거"}\n'
-        "- reasoning은 한국어로 1-2문장으로 간단히 작성한다.\n"
+        "### J(판단) vs P(인식):\n"
+        "- J: 계획, 일정/마감, 체크리스트, 정리/구조화, 확정/결정\n"
+        "- P: 즉흥, 그때 가서, 유연/변화, 느슨/옵션 열어두기, 막판 몰아하기\n"
+        "\n"
+        "### E(외향) vs I(내향):\n"
+        "- E: 사람/교류/활동/외부 자극 선호, 말이 많고 즉각 반응\n"
+        "- I: 혼자/내부 자극 선호, 깊은 생각, 말 수 적고 천천히 반응\n"
+        "\n"
+        "## 점수 부여 가이드:\n"
+        "- 해당 차원의 양쪽에 0~10 점수를 준다.\n"
+        "- 명확한 성향이면 차이를 크게 (예: 8:2), 애매하면 작게 (예: 5:4)\n"
+        "- 출력 예: {\"dimension\": \"SN\", \"scores\": {\"S\": 3, \"N\": 7}, \"reasoning\": \"분석 근거\"}\n"
     )
+
 
 
 def _build_analysis_user_prompt(command: AnalyzeAnswerCommand) -> str:
@@ -151,10 +166,16 @@ def _build_analysis_user_prompt(command: AnalyzeAnswerCommand) -> str:
 
     return (
         "이전 대화 맥락:\n"
-        f"{history_block}\n\n"
-        f"현재 질문: {command.question}\n"
-        f"사용자 답변: {command.answer}\n\n"
-        "위 답변을 분석하여 MBTI 점수 JSON을 출력해라."
+        f"target_dimension: {command.target_dimension}\n"
+        f"반드시 이 축만 판단해라: {command.target_dimension}. 다른 축(EI/SN/TF/JP)은 무시해라.\n\n"
+        f"질문(참고용):\n{command.question}\n\n"
+        f"분석할 답변:\n{command.answer}\n\n"
+        "아래 JSON 형태로만 반환해라:\n"
+        "{\n"
+        f'  "dimension": "{command.target_dimension}",\n'
+        '  "scores": { ...해당 축 두 키만, 0~10 정수 },\n'
+        '  "reason": "한국어 1~2문장"\n'
+        "}\n"
     )
 
 
@@ -178,6 +199,7 @@ class OpenAIQuestionProvider(AIQuestionProviderPort):
                 {"role": "user", "content": user_prompt},
             ],
             response_format={"type": "json_object"},
+            temperature=0.0,  # ✅ 온도 낮추기
         )
 
         content = resp.choices[0].message.content  # openai python SDK 1.x 형태 가정
@@ -212,42 +234,48 @@ class OpenAIQuestionProvider(AIQuestionProviderPort):
                 {"role": "user", "content": user_prompt},
             ],
             response_format={"type": "json_object"},
+            temperature=0.0,
         )
 
         content = resp.choices[0].message.content
         data = _parse_json_object(content)
 
-        dimension = data.get("dimension", "EI")
+        allowed = {
+            "EI": {"E", "I"},
+            "SN": {"S", "N"},
+            "TF": {"T", "F"},
+            "JP": {"J", "P"},
+        }
+
+        dimension = data.get("dimension")
+        if dimension != command.target_dimension:
+            raise ValueError(f"dimension mismatch: {dimension} != {command.target_dimension}")
+
         scores = data.get("scores", {})
+        keys = set(scores.keys())
+        expected_keys = allowed[command.target_dimension]
+        if keys != expected_keys:
+            raise ValueError(f"invalid score keys: {keys}, expected {expected_keys}")
+
+        # 0~10 정수 범위 체크 (합은 강제하지 않음)
+        norm_scores: Dict[str, int] = {}
+        for k in expected_keys:
+            v = scores.get(k, 0)
+            if not isinstance(v, int) or not (0 <= v <= 10):
+                raise ValueError(f"invalid score value for {k}: {v}")
+            norm_scores[k] = v
+
         reasoning = data.get("reasoning", "")
 
-        # 차원 유효성 검사
-        valid_dimensions = {"EI", "SN", "TF", "JP"}
-        if dimension not in valid_dimensions:
-            dimension = "EI"  # fallback
-
-        # 점수 파싱 및 우세한 쪽 결정
-        dimension_sides = {
-            "EI": ("E", "I"),
-            "SN": ("S", "N"),
-            "TF": ("T", "F"),
-            "JP": ("J", "P"),
-        }
-        side_a, side_b = dimension_sides[dimension]
-
-        score_a = int(scores.get(side_a, 0))
-        score_b = int(scores.get(side_b, 0))
-
-        if score_a >= score_b:
-            winning_side = side_a
-            winning_score = score_a
-        else:
-            winning_side = side_b
-            winning_score = score_b
+        side_a, side_b = tuple(expected_keys)
+        score_a = norm_scores.get(side_a, 0)
+        score_b = norm_scores.get(side_b, 0)
+        winning_side = side_a if score_a >= score_b else side_b
+        winning_score = score_a if score_a >= score_b else score_b
 
         return AnalyzeAnswerResponse(
             dimension=dimension,
-            scores={side_a: score_a, side_b: score_b},
+            scores=norm_scores,
             side=winning_side,
             score=winning_score,
             reasoning=reasoning,

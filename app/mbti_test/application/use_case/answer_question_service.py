@@ -97,9 +97,10 @@ class AnswerQuestionService(AnswerQuestionUseCase):
                 question=session.pending_question or "",
                 answer=command.answer,
                 history=history,
+                target_dimension=session.pending_question_dimension or "SN"
             )
             ai_analysis = self._ai_question_provider.analyze_answer(analyze_command)
-            dimension = ai_analysis.dimension
+            dimension = ai_analysis.dimension or analyze_command.target_dimension
             scores = ai_analysis.scores
             side = ai_analysis.side
             score = ai_analysis.score
@@ -181,11 +182,14 @@ class AnswerQuestionService(AnswerQuestionUseCase):
             ai_response = self._ai_question_provider.generate_questions(ai_command)
 
             if ai_response.questions:
+                q = ai_response.questions[0]
                 next_question = MBTIMessage(
                     role=MessageRole.ASSISTANT,
-                    content=ai_response.questions[0].text,
+                    content=q.text,
                     source=MessageSource.AI,
                 )
+                # ✅ 차원 보존
+                session.pending_question_dimension = (q.target_dimensions or [None])[0]
             else:
                 # Fallback if AI fails
                 next_question = MBTIMessage(

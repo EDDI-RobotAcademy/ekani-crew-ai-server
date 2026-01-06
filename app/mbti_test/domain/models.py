@@ -6,7 +6,7 @@ from typing import List, Literal
 
 
 MBTIDimension = Literal["E/I", "S/N", "T/F", "J/P"]
-
+TargetDimension = Literal["EI", "SN", "TF", "JP"]
 
 class MessageRole(str, Enum):
     USER = "user"
@@ -50,7 +50,7 @@ class AnalyzeAnswerCommand:
     question: str  # 질문 내용
     answer: str  # 유저 답변
     history: List[ChatMessage]  # 이전 대화 맥락
-
+    target_dimension: TargetDimension  # ✅ 추가
 
 @dataclass(frozen=True)
 class AnalyzeAnswerResponse:

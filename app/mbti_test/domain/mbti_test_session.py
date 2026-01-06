@@ -41,6 +41,7 @@ class MBTITestSession:
     greeting_completed: bool = False  # 인사 응답 완료 여부
     human_test_result: Dict | None = None  # 사람 기반 테스트 결과
     pending_question: Optional[str] = None  # 다음 턴에 저장될 질문 (아직 답변 안 받음)
+    pending_question_dimension: Optional[str] = None  # 다음 턴 질문의 타깃 차원(EI/SN/TF/JP)
 
     @property
     def questions(self) -> List[str]:
